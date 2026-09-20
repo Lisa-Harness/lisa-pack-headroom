@@ -1,0 +1,6 @@
+operation_id: headroom_status
+description: Produce a Headroom savings-and-health report from the cached signal snapshot.
+effect: read
+mode_allowlist: [headroom]
+timeout_seconds: 10
+max_calls_per_turn: 1

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lisa_packs*", "lisa_packs.headroom*"]
+
+[tool.setuptools.package-data]
+"lisa_packs" = ["*"]
+"lisa_packs.headroom" = ["content/**/*.md", "modes/**/*.md", "operations/**/*.md", "operations/**/*.yml", "operations/**/*.py", "mcp_servers.yaml"]
+
+[project]
+name = "lisa-pack-headroom"
+version = "0.1.0"
+description = "Lisa Headroom pack - token-savings signal connector plus mid-turn context compression via the Headroom MCP server"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "live: hits real external signal or provider APIs and prints a tester-visible summary",
+    "integration: multi-module in-process test; may require a local Headroom proxy on 127.0.0.1:8787",
+    "eval: deterministic agent regression evals (no model calls, no I/O)",
+]
+
+[project.entry-points."lisa.extensions.content_roots"]
+headroom = "lisa_packs.headroom:get_content_root"
+
+[project.entry-points."lisa.extensions.signal_connectors"]
+headroom = "lisa_packs.headroom.connector:HeadroomSignalCollector"
+
+[project.entry-points."lisa.extensions.context_items"]
+headroom = "lisa_packs.headroom.context_items:build_context_items"
+
+[project.entry-points."lisa.extensions.processing_loops"]
+headroom = "lisa_packs.headroom.processing:HeadroomProcessingLoop"

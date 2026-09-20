@@ -1,0 +1,50 @@
+version: 1
+
+# Headroom MCP server (cold binary).
+#
+# Launches Headroom's own MCP server (`headroom mcp serve`) as a cold
+# subprocess, exposing mid-turn compression to the model:
+#   - headroom.compress  -> headroom_compress  (compress large content, keep CCR hash)
+#   - headroom.retrieve  -> headroom_retrieve  (fetch original by hash when detail is needed)
+#   - headroom.stats     -> headroom_stats     (session savings statistics)
+#
+# runtime_kind: binary — the kernel compiles `command_path` into the
+# stdio-server launch; `stdio` is NOT a valid runtime_kind.
+#
+# HEADROOM_MCP_BIN must resolve to the `headroom` CLI (uv tool install /
+# pipx). Unset -> empty string -> cold connect fails cleanly and the alias
+# call returns "MCP server ... is not connected." — install Headroom and
+# export HEADROOM_MCP_BIN=<absolute path> to enable.
+#
+# data_dir_arg: null — never let the compiler append `--data-dir <host dir>`
+# to headroom's argv; Headroom manages its own filesystem contract.
+servers:
+  - server_id: headroom
+    runtime_kind: binary
+    command_path: ${HEADROOM_MCP_BIN}
+    cli_args: ["mcp", "serve", "--proxy-url", "${HEADROOM_PROXY_URL}"]
+    data_dir_arg: null
+    warm: false
+    tool_policy:
+      allowed_tools:
+        - headroom_compress
+        - headroom_retrieve
+        - headroom_stats
+    aliases:
+      - alias_name: headroom.compress
+        native_tool: headroom_compress
+        description: >-
+          Compress large content (tool output, logs, JSON, files) before
+          reasoning over it. Returns compressed text, a CCR hash for the
+          original, and token savings. Use this FIRST on any large payload.
+      - alias_name: headroom.retrieve
+        native_tool: headroom_retrieve
+        description: >-
+          Retrieve original uncompressed content by its CCR hash, optionally
+          filtered by a query. Use when the compressed form dropped a detail
+          you need.
+      - alias_name: headroom.stats
+        native_tool: headroom_stats
+        description: >-
+          Session compression statistics — compressions, retrievals, tokens
+          saved, estimated cost saved, and recent events.
