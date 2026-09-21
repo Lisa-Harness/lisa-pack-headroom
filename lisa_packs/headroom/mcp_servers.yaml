@@ -1,5 +1,35 @@
 version: 1
 
+# Host-managed Headroom proxy.
+#
+# The host starts this before constructing provider clients, then routes its
+# OpenAI-compatible providers through the ready loopback endpoint. The
+# upstream is NOT hard-coded here: the provider overlay's
+# `value_from: direct_base_url` makes the host inject its own direct Ollama
+# endpoint (LISA_OLLAMA_HOST / OLLAMA_HOST, default localhost:11434) into the
+# child's environment, so the pack stays environment-agnostic.
+proxies:
+  - proxy_id: headroom
+    runtime_kind: binary
+    command_path: ${HEADROOM_MCP_BIN}
+    cli_args: ["proxy"]
+    protocol: openai
+    providers: [ollama]
+    port: 18787
+    listen:
+      port_env: HEADROOM_PORT
+      base_path: /v1
+    provider_overrides:
+      ollama:
+        env:
+          OPENAI_TARGET_API_URL:
+            value_from: direct_base_url
+    readiness:
+      url_path: /readyz
+      timeout_seconds: 10
+    warm: true
+    required: false
+
 # Headroom MCP server (cold binary).
 #
 # Launches Headroom's own MCP server (`headroom mcp serve`) as a cold
@@ -24,6 +54,10 @@ servers:
     command_path: ${HEADROOM_MCP_BIN}
     cli_args: ["mcp", "serve", "--proxy-url", "${HEADROOM_PROXY_URL}"]
     data_dir_arg: null
+    # Third-party click CLI: the framework's --workspace-root flag is
+    # injected before the server's own subcommand and would be a hard
+    # parse error. Opt out of the injection entirely.
+    workspace_root_arg: null
     warm: false
     tool_policy:
       allowed_tools:
