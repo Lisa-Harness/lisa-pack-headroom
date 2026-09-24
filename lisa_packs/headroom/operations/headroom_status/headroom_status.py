@@ -13,6 +13,7 @@ from :mod:`lisa_packs.headroom.context_items` rather than duplicating it —
 from __future__ import annotations
 
 from kernel.models import OperationExecutionContext, OperationResult, UnifiedState
+
 from lisa_packs.headroom.assessment import assess
 from lisa_packs.headroom.config import get_headroom_connector_settings
 from lisa_packs.headroom.context_items import _metrics_from_signal_item, _signal_item
