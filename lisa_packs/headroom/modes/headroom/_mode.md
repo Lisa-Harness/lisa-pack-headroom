@@ -17,13 +17,12 @@ routing_intent_keywords:
     - headroom
     - compress
     - compression
-    - token savings
     - ccr
   tokens:
     - tokens
+    - token savings
     - token usage
-    - context window
-    - cost saved
+
 command_pattern: '^(?:/)?headroom(?:[\s,:;]+(?P<query>.+))?$'
 description: "Headroom token-savings assessment and mid-turn context compression."
 pre_turn_operation_ids: [headroom_status]
@@ -83,3 +82,4 @@ You can compress large content mid-turn instead of reasoning over it raw:
 - Proxy health — the assessment's `proxy-down` finding includes the
   configured `HEADROOM_PROXY_URL`; check the proxy is running there before
   assuming Headroom is broken.
+  
