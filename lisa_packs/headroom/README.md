@@ -1,6 +1,6 @@
 # lisa-pack-headroom
 
-Headroom integration for [Lisa](https://github.com/TheMigusGroup/lisa-framework) — a two-plane pack that monitors Headroom token savings in the bottom half, then gives the model mid-turn context compression in the top half.
+Headroom integration for [Lisa](https://github.com/TheMigusGroup/lisa-harness) — a two-plane pack that monitors Headroom token savings in the bottom half, then gives the model mid-turn context compression in the top half.
 
 > **Compress first, retrieve later.** Every turn in `headroom` mode starts with a cached savings-and-health briefing from the bottom-half snapshot. The model then uses the `headroom.*` MCP aliases to compress large payloads mid-turn — keeping a CCR hash so the original stays retrievable on demand.
 
