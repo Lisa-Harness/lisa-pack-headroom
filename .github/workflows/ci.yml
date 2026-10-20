@@ -20,11 +20,13 @@ jobs:
       - name: Check out the pack
         uses: actions/checkout@v4
 
-      - name: Check out framework as sibling
+      # actions/checkout requires the path to stay under the workspace,
+      # so the framework lands in ./lisa next to the pack's own files.
+      - name: Check out framework
         uses: actions/checkout@v4
         with:
           repository: Lisa-Harness/lisa
-          path: ../lisa
+          path: lisa
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -33,30 +35,30 @@ jobs:
 
       - name: Set up Python ${{ matrix.python }}
         run: uv python install ${{ matrix.python }}
-        working-directory: ../lisa
+        working-directory: lisa
 
       - name: Install framework
         run: uv sync --extra dev
-        working-directory: ../lisa
+        working-directory: lisa
 
       # ruff and mypy resolve their configuration from the working
       # directory, so they run against the framework checkout: that is
       # where the shared [tool.ruff] and [tool.mypy] settings live. The
       # pack tree is the target, not the config.
       - name: Format check (ruff)
-        run: uv run ruff format --check "../lisa-pack-headroom/lisa_packs/headroom"
-        working-directory: ../lisa
+        run: uv run ruff format --check "../lisa_packs/headroom"
+        working-directory: lisa
 
       - name: Lint (ruff)
-        run: uv run ruff check "../lisa-pack-headroom/lisa_packs/headroom"
-        working-directory: ../lisa
+        run: uv run ruff check "../lisa_packs/headroom"
+        working-directory: lisa
 
       - name: Type check (mypy)
-        run: uv run mypy "../lisa-pack-headroom/lisa_packs/headroom"
-        working-directory: ../lisa
+        run: uv run mypy "../lisa_packs/headroom"
+        working-directory: lisa
 
       # pytest runs from the pack root: the pack's own pyproject.toml sets
       # pythonpath = ["."], which makes lisa_packs.headroom importable so
       # the SDK can infer each operation's module_path from the source tree.
       - name: Unit tests (no live)
-        run: uv run --project ../lisa pytest -m "not live" --tb=short -v
+        run: uv run --project lisa pytest -m "not live" --tb=short -v
