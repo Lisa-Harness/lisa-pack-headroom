@@ -90,11 +90,16 @@ def test_resolve_mcp_command_missing_returns_empty(
         config_module.settings = fresh.__class__()
 
 
-def test_expand_stats_file_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HOME", "/home/tester")
+def test_expand_stats_file_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # Path.expanduser() reads HOME on POSIX and USERPROFILE on Windows,
+    # so the test pins whichever one this platform uses.
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
 
     expanded = expand_stats_file_path("~/.headroom/session_stats.jsonl")
-    assert expanded == "/home/tester/.headroom/session_stats.jsonl"
+    assert expanded == str((home / ".headroom" / "session_stats.jsonl").resolve())
 
 
 def test_owned_settings_drop_unrelated_env(monkeypatch: pytest.MonkeyPatch) -> None:
