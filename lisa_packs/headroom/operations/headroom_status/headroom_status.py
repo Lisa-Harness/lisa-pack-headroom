@@ -28,7 +28,7 @@ def _render_report(assessment: HeadroomAssessment) -> str:
     if assessment.status == "unconfigured":
         lines.append(
             "Headroom is not configured. Install Headroom "
-            "(`uv tool install --python 3.13 \"headroom-ai[all]\"`), run "
+            '(`uv tool install --python 3.13 "headroom-ai[all]"`), run '
             "`headroom proxy --port 8787`, export `HEADROOM_MCP_BIN` and "
             "`HEADROOM_PROXY_URL`, then set `HEADROOM_EXPECTED=true`."
         )

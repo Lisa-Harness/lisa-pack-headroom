@@ -88,68 +88,66 @@ def assess(
                 salience=0.0,
             )
         )
-    else:
+    elif metrics.source == "jsonl":
         # Proxy unreachable: critical while expected (the host opted into
         # savings and lost them); only the JSONL fallback mutes this to a
         # degraded-but-alive warn. A snapshot that reached collect() with
         # neither feed (status='error') is the expected-down case.
-        if metrics.source == "jsonl":
-            findings.append(
-                Finding(
-                    id="proxy-down",
-                    severity="warn",
-                    title="Headroom proxy down (MCP still active)",
-                    body=(
-                        f"Proxy unreachable at {metrics.proxy_url} but the session-stats "
-                        "file shows recent MCP activity — mid-turn compression still "
-                        "works; proxy-level savings are lost until it restarts."
-                    ),
-                    evidence_type=_HEALTH,
-                    tags=["headroom", "proxy", "down"],
-                    salience=0.5,
-                )
+        findings.append(
+            Finding(
+                id="proxy-down",
+                severity="warn",
+                title="Headroom proxy down (MCP still active)",
+                body=(
+                    f"Proxy unreachable at {metrics.proxy_url} but the session-stats "
+                    "file shows recent MCP activity — mid-turn compression still "
+                    "works; proxy-level savings are lost until it restarts."
+                ),
+                evidence_type=_HEALTH,
+                tags=["headroom", "proxy", "down"],
+                salience=0.5,
             )
-        else:
-            findings.append(
-                Finding(
-                    id="proxy-down",
-                    severity="critical",
-                    title="Headroom proxy down",
-                    body=(
-                        f"Proxy unreachable at {metrics.proxy_url} while "
-                        "`HEADROOM_EXPECTED=true`. Compression savings are lost "
-                        "until the proxy restarts (`headroom proxy --port 8787`)."
-                    ),
-                    evidence_type=_HEALTH,
-                    tags=["headroom", "proxy", "down"],
-                    salience=0.9,
-                )
+        )
+    else:
+        findings.append(
+            Finding(
+                id="proxy-down",
+                severity="critical",
+                title="Headroom proxy down",
+                body=(
+                    f"Proxy unreachable at {metrics.proxy_url} while "
+                    "`HEADROOM_EXPECTED=true`. Compression savings are lost "
+                    "until the proxy restarts (`headroom proxy --port 8787`)."
+                ),
+                evidence_type=_HEALTH,
+                tags=["headroom", "proxy", "down"],
+                salience=0.9,
             )
-            hypotheses.append("Headroom proxy process stopped or crashed.")
-            hypotheses.append("Proxy bound to a different port (HEADROOM_PROXY_URL).")
+        )
+        hypotheses.append("Headroom proxy process stopped or crashed.")
+        hypotheses.append("Proxy bound to a different port (HEADROOM_PROXY_URL).")
 
     # -- savings ----------------------------------------------------------
     traffic = metrics.proxy_requests_1h + metrics.compressions_1h
-    if metrics.proxy_up and traffic > 0:
-        if metrics.savings_pct_1h < savings_floor_pct:
-            findings.append(
-                Finding(
-                    id="no-savings",
-                    severity="warn",
-                    title="No meaningful token savings",
-                    body=(
-                        f"Traffic is flowing ({traffic} requests/compressions in the last hour) "
-                        f"but savings are only {metrics.savings_pct_1h:.1f}% "
-                        f"(floor {savings_floor_pct:.0f}%). Likely a routing or "
-                        "content-router misconfiguration."
-                    ),
-                    evidence_type=_SAVING,
-                    tags=["headroom", "savings", "routing"],
-                    salience=0.5,
-                )
+    if metrics.proxy_up and traffic > 0 and metrics.savings_pct_1h < savings_floor_pct:
+        findings.append(
+            Finding(
+                id="no-savings",
+                severity="warn",
+                title="No meaningful token savings",
+                body=(
+                    f"Traffic is flowing ({traffic} requests/compressions in the last hour) "
+                    f"but savings are only {metrics.savings_pct_1h:.1f}% "
+                    f"(floor {savings_floor_pct:.0f}%). Likely a routing or "
+                    "content-router misconfiguration."
+                ),
+                evidence_type=_SAVING,
+                tags=["headroom", "savings", "routing"],
+                salience=0.5,
             )
-            hypotheses.append("Agent not routed through the proxy (check base URLs).")
-            hypotheses.append("Content router selecting no compressor for payloads.")
+        )
+        hypotheses.append("Agent not routed through the proxy (check base URLs).")
+        hypotheses.append("Content router selecting no compressor for payloads.")
 
     if (
         metrics.trailing_savings_pct_7d > 0

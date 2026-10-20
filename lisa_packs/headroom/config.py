@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
-
 from sdk.config import settings as runtime_settings
 from sdk.pack_settings import build_owned_settings_sources
 
@@ -133,8 +132,8 @@ def resolve_mcp_command() -> str:
 def expand_stats_file_path(stats_file: str) -> str:
     """Expand ``~`` and env vars in the stats file path."""
 
-    from pathlib import Path
     import os
+    from pathlib import Path
 
     expanded = os.path.expandvars(stats_file)
     return str(Path(expanded).expanduser().resolve())

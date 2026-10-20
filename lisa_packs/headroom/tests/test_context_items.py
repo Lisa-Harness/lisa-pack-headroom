@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 from kernel.models import ContextItem, UnifiedState
+
 from lisa_packs.headroom.context_items import (
     _metrics_from_signal_item,
     _signal_item,
     build_context_items,
 )
+
+_EXPECTED_COMPRESSIONS_1H = 40
+_EXPECTED_TOKENS_SAVED_1H = 120000
+_EXPECTED_SAVINGS_PCT_1H = 30.0
+_EXPECTED_TRAILING_SAVINGS_PCT_7D = 32.0
+_EXPECTED_SALIENT_THRESHOLD = 0.8
 
 
 def _signal_item_body() -> ContextItem:
@@ -43,10 +50,10 @@ def test_metrics_round_trip_preserves_scalars() -> None:
     assert metrics.source == "proxy"
     assert metrics.proxy_up is True
     assert metrics.proxy_url == "http://127.0.0.1:8787"
-    assert metrics.compressions_1h == 40
-    assert metrics.tokens_saved_1h == 120000
-    assert metrics.savings_pct_1h == 30.0
-    assert metrics.trailing_savings_pct_7d == 32.0
+    assert metrics.compressions_1h == _EXPECTED_COMPRESSIONS_1H
+    assert metrics.tokens_saved_1h == _EXPECTED_TOKENS_SAVED_1H
+    assert metrics.savings_pct_1h == _EXPECTED_SAVINGS_PCT_1H
+    assert metrics.trailing_savings_pct_7d == _EXPECTED_TRAILING_SAVINGS_PCT_7D
     assert metrics.collected_at == "2026-09-20T12:00:00Z"
 
 
@@ -83,7 +90,7 @@ def test_build_context_items_critical_has_high_salience() -> None:
 
     proxy_down = [i for i in items if i.item_id.endswith("proxy-down")]
     assert proxy_down, "expected a proxy-down finding item"
-    assert proxy_down[0].salience_score >= 0.8
+    assert proxy_down[0].salience_score >= _EXPECTED_SALIENT_THRESHOLD
 
 
 def test_build_context_items_empty_state() -> None:

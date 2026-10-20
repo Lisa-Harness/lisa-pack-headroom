@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import json
 
-from lisa_packs.headroom import get_content_root
 from sdk.content._catalog import (
     build_mode_catalog_json,
     build_operation_catalog_json,
     resolve_mode_roots,
     resolve_operation_roots,
 )
+
+from lisa_packs.headroom import get_content_root
 
 
 def test_headroom_pack_content_root_is_directory() -> None:

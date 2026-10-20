@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-
 from kernel.intake.contracts import CollectionResult, ProcessContext, ProcessedState
+
 from lisa_packs.headroom.models import HeadroomMetrics
 from lisa_packs.headroom.processing import HeadroomProcessingLoop
 

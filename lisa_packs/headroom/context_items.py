@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 
 from kernel.extension_runtime import ExtensionRuntimeContext
 from kernel.models import ContextItem, UnifiedState
+
 from lisa_packs.headroom.assessment import assess
 from lisa_packs.headroom.config import get_headroom_connector_settings
 from lisa_packs.headroom.models import HeadroomMetrics
@@ -59,7 +60,8 @@ def _metrics_from_signal_item(item: ContextItem) -> HeadroomMetrics:
 
 def _signal_item(state: UnifiedState) -> ContextItem | None:
     """Return this connector's intake signal item, or ``None`` when absent."""
-    for item in getattr(state, "context_items", None) or []:
+    items: list[ContextItem] = list(getattr(state, "context_items", None) or [])
+    for item in items:
         if item.item_id == _SIGNAL_ITEM_ID:
             return item
     return None

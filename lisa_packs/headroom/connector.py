@@ -32,13 +32,14 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import httpx
-
 from kernel.intake.connectors import SignalCollector
+
 from lisa_packs.headroom.config import (
     expand_stats_file_path,
     get_headroom_connector_settings,
@@ -49,6 +50,66 @@ logger = logging.getLogger(__name__)
 
 _STATS_WINDOW_HOURS = 1
 _SEVEN_DAYS_HOURS = 24 * 7
+
+
+@dataclass
+class _JsonlWindow:
+    """Rolling counters folded out of the shared session-stats JSONL feed."""
+
+    compressions_1h: int = 0
+    retrievals_1h: int = 0
+    tokens_saved_1h: int = 0
+    tokens_processed_1h: int = 0
+    mcp_calls_1h: int = 0
+    mcp_context_tokens_1h: int = 0
+    ccr_expired_1h: int = 0
+    ccr_failures_1h: int = 0
+    saved_7d: int = 0
+    processed_7d: int = 0
+
+
+def _fold_jsonl_events(
+    events: list[dict[str, Any]],
+    *,
+    cutoff_1h: datetime,
+    cutoff_7d: datetime,
+) -> _JsonlWindow:
+    """Fold raw session-stats events into the 1h and 7d rolling windows.
+
+    Tolerant to missing/renamed keys: every counter reads through
+    :func:`_to_int`, and events without a parsable timestamp are skipped.
+    """
+    window = _JsonlWindow()
+    for event in events:
+        ts = _parse_ts(str(event.get("timestamp", event.get("ts", ""))))
+        if ts is None:
+            continue
+        event_kind = str(event.get("event", event.get("kind", ""))).lower()
+        status = str(event.get("status", "")).lower()
+        if ts >= cutoff_7d:
+            window.saved_7d += _to_int(event.get("tokens_saved", 0))
+            window.processed_7d += _to_int(
+                event.get("tokens_processed", event.get("original_tokens", 0))
+            )
+        if ts < cutoff_1h:
+            continue
+        window.mcp_calls_1h += 1
+        window.mcp_context_tokens_1h += _to_int(
+            event.get("context_tokens", event.get("original_tokens", 0))
+        )
+        if "compress" in event_kind or event_kind == "":
+            window.compressions_1h += 1
+            window.tokens_saved_1h += _to_int(event.get("tokens_saved", 0))
+            window.tokens_processed_1h += _to_int(
+                event.get("tokens_processed", event.get("original_tokens", 0))
+            )
+        elif "retrieve" in event_kind:
+            window.retrievals_1h += 1
+            if status in ("error", "expired", "miss"):
+                window.ccr_failures_1h += 1
+        if status == "expired":
+            window.ccr_expired_1h += 1
+    return window
 
 
 class HeadroomSignalCollector(SignalCollector[HeadroomMetrics]):
@@ -141,10 +202,9 @@ class HeadroomSignalCollector(SignalCollector[HeadroomMetrics]):
         jsonl_events = self._read_stats_file(connector_settings.stats_file)
         if jsonl_events:
             self._merge_jsonl_window(metrics, jsonl_events)
-            if metrics.source == "unconfigured" or metrics.source == "proxy":
+            if metrics.source in {"unconfigured", "proxy"} and metrics.source != "proxy":
                 # jsonl alone still counts as a usable feed
-                if metrics.source != "proxy":
-                    metrics.source = "jsonl"
+                metrics.source = "jsonl"
 
         self._classify(metrics, connector_settings.expected)
         return metrics
@@ -174,9 +234,7 @@ class HeadroomSignalCollector(SignalCollector[HeadroomMetrics]):
         ``headroom_stats`` MCP tool); unknown shapes contribute what they
         can and the rest stay zero.
         """
-        metrics.proxy_requests_1h = _to_int(
-            stats.get("requests", stats.get("proxy_requests", 0))
-        )
+        metrics.proxy_requests_1h = _to_int(stats.get("requests", stats.get("proxy_requests", 0)))
         metrics.cache_hit_rate = _to_float(stats.get("cache_hit_rate", 0.0))
         metrics.cost_saved_usd_1h = _to_float(
             stats.get("estimated_cost_saved_usd", stats.get("cost_saved_usd", 0.0))
@@ -187,9 +245,10 @@ class HeadroomSignalCollector(SignalCollector[HeadroomMetrics]):
         tokens_processed = _to_int(stats.get("tokens_processed", stats.get("tokens_in", 0)))
         metrics.tokens_processed_1h = tokens_processed
         if tokens_processed > 0:
-            metrics.savings_pct_1h = _to_float(
-                stats.get("savings_percent", 0.0)
-            ) or 100.0 * metrics.tokens_saved_1h / tokens_processed
+            metrics.savings_pct_1h = (
+                _to_float(stats.get("savings_percent", 0.0))
+                or 100.0 * metrics.tokens_saved_1h / tokens_processed
+            )
         else:
             metrics.savings_pct_1h = _to_float(stats.get("savings_percent", 0.0))
         recent = stats.get("recent_events")
@@ -210,8 +269,8 @@ class HeadroomSignalCollector(SignalCollector[HeadroomMetrics]):
         events: list[dict[str, Any]] = []
         try:
             with path.open("r", encoding="utf-8", errors="replace") as handle:
-                for line in handle:
-                    line = line.strip()
+                for raw_line in handle:
+                    line = raw_line.strip()
                     if not line:
                         continue
                     try:
@@ -235,59 +294,27 @@ class HeadroomSignalCollector(SignalCollector[HeadroomMetrics]):
         missing/renamed keys.
         """
         now = _parse_ts(metrics.collected_at) or datetime.now(UTC)
-        cutoff_1h = now - timedelta(hours=_STATS_WINDOW_HOURS)
-        cutoff_7d = now - timedelta(hours=_SEVEN_DAYS_HOURS)
-
-        compressions_1h = retrievals_1h = tokens_saved_1h = tokens_processed_1h = 0
-        mcp_calls_1h = mcp_context_tokens_1h = 0
-        ccr_expired_1h = ccr_failures_1h = 0
-        saved_7d = processed_7d = 0
-
-        for event in events:
-            ts = _parse_ts(str(event.get("timestamp", event.get("ts", ""))))
-            if ts is None:
-                continue
-            event_kind = str(event.get("event", event.get("kind", ""))).lower()
-            if ts >= cutoff_7d:
-                saved_7d += _to_int(event.get("tokens_saved", 0))
-                processed_7d += _to_int(
-                    event.get("tokens_processed", event.get("original_tokens", 0))
-                )
-            if ts < cutoff_1h:
-                continue
-            # Within the 1h window:
-            mcp_calls_1h += 1
-            mcp_context_tokens_1h += _to_int(
-                event.get("context_tokens", event.get("original_tokens", 0))
-            )
-            if "compress" in event_kind or event_kind == "":
-                compressions_1h += 1
-                tokens_saved_1h += _to_int(event.get("tokens_saved", 0))
-                tokens_processed_1h += _to_int(
-                    event.get("tokens_processed", event.get("original_tokens", 0))
-                )
-            elif "retrieve" in event_kind:
-                retrievals_1h += 1
-                if str(event.get("status", "")).lower() in ("error", "expired", "miss"):
-                    ccr_failures_1h += 1
-            if str(event.get("status", "")).lower() == "expired":
-                ccr_expired_1h += 1
+        window = _fold_jsonl_events(
+            events,
+            cutoff_1h=now - timedelta(hours=_STATS_WINDOW_HOURS),
+            cutoff_7d=now - timedelta(hours=_SEVEN_DAYS_HOURS),
+        )
 
         if not metrics.proxy_up:
             # JSONL is the authoritative feed when the proxy is down.
-            metrics.compressions_1h = compressions_1h
-            metrics.retrievals_1h = retrievals_1h
-            metrics.tokens_saved_1h = tokens_saved_1h
-            metrics.tokens_processed_1h = tokens_processed_1h
-            if tokens_processed_1h > 0:
-                metrics.savings_pct_1h = 100.0 * tokens_saved_1h / tokens_processed_1h
-        metrics.mcp_calls_1h = mcp_calls_1h
-        metrics.mcp_context_tokens_1h = mcp_context_tokens_1h
-        metrics.ccr_expired_1h = ccr_expired_1h
-        metrics.ccr_retrieval_failures_1h = ccr_failures_1h
-        if processed_7d > 0:
-            metrics.trailing_savings_pct_7d = 100.0 * saved_7d / processed_7d
-        metrics.trailing_tokens_saved_7d = saved_7d
+            metrics.compressions_1h = window.compressions_1h
+            metrics.retrievals_1h = window.retrievals_1h
+            metrics.tokens_saved_1h = window.tokens_saved_1h
+            metrics.tokens_processed_1h = window.tokens_processed_1h
+            if window.tokens_processed_1h > 0:
+                metrics.savings_pct_1h = 100.0 * window.tokens_saved_1h / window.tokens_processed_1h
+        metrics.mcp_calls_1h = window.mcp_calls_1h
+        metrics.mcp_context_tokens_1h = window.mcp_context_tokens_1h
+        metrics.ccr_expired_1h = window.ccr_expired_1h
+        metrics.ccr_retrieval_failures_1h = window.ccr_failures_1h
+        if window.processed_7d > 0:
+            metrics.trailing_savings_pct_7d = 100.0 * window.saved_7d / window.processed_7d
+        metrics.trailing_tokens_saved_7d = window.saved_7d
 
     # ------------------------------------------------------------------
     # Classification

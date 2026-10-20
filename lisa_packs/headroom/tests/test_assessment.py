@@ -5,6 +5,8 @@ from __future__ import annotations
 from lisa_packs.headroom.assessment import assess
 from lisa_packs.headroom.models import HeadroomMetrics
 
+_EXPECTED_CRITICAL_SALIENCE = 0.8
+
 
 def _ok_metrics() -> HeadroomMetrics:
     return HeadroomMetrics(
@@ -67,7 +69,7 @@ def test_assess_proxy_down_is_critical() -> None:
     critical = [f for f in assessment.findings if f.id == "proxy-down"]
     assert critical, "expected proxy-down finding"
     assert critical[0].severity == "critical"
-    assert critical[0].salience >= 0.8
+    assert critical[0].salience >= _EXPECTED_CRITICAL_SALIENCE
     assert assessment.status == "degraded"
     assert any("proxy" in h.lower() for h in assessment.hypotheses)
 

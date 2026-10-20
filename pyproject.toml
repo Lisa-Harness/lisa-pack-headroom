@@ -29,7 +29,7 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["tests"]
+testpaths = ["lisa_packs/headroom/tests"]
 markers = [
     "live: hits real external signal or provider APIs and prints a tester-visible summary",
     "integration: multi-module in-process test; may require a local Headroom proxy on 127.0.0.1:8787",

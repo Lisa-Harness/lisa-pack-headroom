@@ -13,18 +13,17 @@ from datetime import UTC, datetime
 
 from kernel.intake.contracts import ProcessContext, ProcessedState
 from kernel.models import AnomalyAlert
+
 from lisa_packs.headroom.assessment import assess
-from lisa_packs.headroom.context_items import _signal_item, _metrics_from_signal_item
 from lisa_packs.headroom.config import get_headroom_connector_settings
+from lisa_packs.headroom.context_items import _metrics_from_signal_item, _signal_item
 from lisa_packs.headroom.models import HeadroomMetrics
 
 
 def _snapshot_from_collections(ctx: ProcessContext) -> HeadroomMetrics | None:
     """Recover this collector's typed snapshot from the tick's collection results."""
     for result in ctx.collections:
-        if result.collector_id == "headroom" and isinstance(
-            result.snapshot, HeadroomMetrics
-        ):
+        if result.collector_id == "headroom" and isinstance(result.snapshot, HeadroomMetrics):
             return result.snapshot
     return None
 

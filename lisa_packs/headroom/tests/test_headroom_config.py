@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -13,6 +12,10 @@ from lisa_packs.headroom.config import (
     get_headroom_connector_settings,
     resolve_mcp_command,
 )
+
+_DEFAULT_SAVINGS_FLOOR_PCT = 5.0
+_DEFAULT_REGRESSION_RATIO = 0.6
+_OVERRIDDEN_SAVINGS_FLOOR_PCT = 10.0
 
 
 def test_default_settings(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -28,8 +31,8 @@ def test_default_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.headroom_mcp_bin == "headroom"
     assert settings.headroom_stats_file == "~/.headroom/session_stats.jsonl"
     assert settings.headroom_expected is True
-    assert settings.headroom_savings_floor_pct == 5.0
-    assert settings.headroom_regression_ratio == 0.6
+    assert settings.headroom_savings_floor_pct == _DEFAULT_SAVINGS_FLOOR_PCT
+    assert settings.headroom_regression_ratio == _DEFAULT_REGRESSION_RATIO
 
 
 def test_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -42,7 +45,7 @@ def test_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.headroom_proxy_url == "http://10.0.0.5:9000/"
     assert settings.headroom_mcp_bin == "/opt/tools/headroom"
     assert settings.headroom_expected is False
-    assert settings.headroom_savings_floor_pct == 10.0
+    assert settings.headroom_savings_floor_pct == _OVERRIDDEN_SAVINGS_FLOOR_PCT
 
 
 def test_connector_settings_strips_trailing_slash(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -70,7 +73,9 @@ def test_resolve_mcp_command_absolute_passthrough(monkeypatch: pytest.MonkeyPatc
         config_module.settings = fresh.__class__()
 
 
-def test_resolve_mcp_command_missing_returns_empty(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_resolve_mcp_command_missing_returns_empty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("HEADROOM_MCP_BIN", "definitely-not-a-real-binary-xyz")
     # PATH scrubbed so which() cannot find anything
     monkeypatch.setenv("PATH", str(tmp_path))
