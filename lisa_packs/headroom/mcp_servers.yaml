@@ -1,26 +1,29 @@
 version: 1
 
-# Host-managed Headroom proxy.
+# Host-managed Headroom proxies.
 #
-# The host starts this before constructing provider clients, then routes its
-# OpenAI-compatible providers through the ready loopback endpoint. The
-# upstream is NOT hard-coded here: the provider overlay's
-# `value_from: direct_base_url` makes the host inject its own direct Ollama
-# endpoint (LISA_OLLAMA_HOST / OLLAMA_HOST, default localhost:11434) into the
-# child's environment, so the pack stays environment-agnostic.
+# `providers: [all]` asks the host to route *every* provider the session can
+# actually call through Headroom — the runtime expands the wildcard against
+# the session model manifest at compile time into one sibling proxy per
+# provider (`headroom.<provider>`, one process + sequential port + one
+# upstream per provider), so the pack never names provider ids and stays
+# fully decoupled from host configuration. Expanding `port + N` keeps each
+# provider's process isolated (Headroom has a single upstream per process);
+# `direct_base_url` per provider makes the child forward to the host's own
+# direct endpoint, never another proxy, so no routing loop is possible.
 proxies:
   - proxy_id: headroom
     runtime_kind: binary
     command_path: ${HEADROOM_MCP_BIN}
     cli_args: ["proxy"]
     protocol: openai
-    providers: [ollama]
+    providers: [all]
     port: 18787
     listen:
       port_env: HEADROOM_PORT
       base_path: /v1
     provider_overrides:
-      ollama:
+      all:
         env:
           OPENAI_TARGET_API_URL:
             value_from: direct_base_url

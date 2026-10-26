@@ -90,7 +90,10 @@ def test_proxy_manifest_parses_with_status_block() -> None:
     spec = specs[0]
     assert spec.proxy_id == "headroom"
     assert spec.protocol.value == "openai"
-    assert spec.providers == ("ollama",)
+    # The wildcard declares coverage for every manifest provider; the runtime
+    # expands it into one sibling proxy per provider at compile time.
+    assert spec.providers == ("all",)
+    assert "all" in spec.provider_options
     status = spec.status_spec
     assert status is not None, "headroom declares a status: block for /proxy visibility"
     assert status.url_path == "/stats"

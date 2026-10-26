@@ -112,6 +112,40 @@ The chip describes configured routing, not proof of each request's receipt.
 Dollar savings are Headroom's estimates, not verified billing reductions;
 cache-hit counters alone do not establish savings caused by compression.
 
+## Proxy coverage across providers
+
+Headroom's proxy declaration uses the framework wildcard so it follows the
+host wherever traffic goes:
+
+```yaml
+proxies:
+  - proxy_id: headroom
+    providers: [all]   # expanded by the runtime
+    provider_overrides:
+      all: { env: { OPENAI_TARGET_API_URL: { value_from: direct_base_url } } }
+```
+
+At compile time the runtime expands `providers: [all]` against the session
+model manifest into one sibling proxy per provider — `headroom.ollama`,
+`headroom.openrouter`, and so on — each on its own sequential port with a
+single upstream (Headroom has one upstream per process):
+
+- **Ollama** → first sequential port in alphabetical provider order (with
+  `ollama` + `openrouter` configured: `127.0.0.1:18787`).
+- **OpenRouter** → next sequential port (e.g. `127.0.0.1:18788` with ollama
+  absent; `18789` if `openai` is also present), forwarding to
+  `LISA_OPENROUTER_BASE_URL` (default `https://openrouter.ai/api/v1`).
+  Actual ports are per-session — `/proxy` shows the mapping.
+- **OpenAI** → `127.0.0.1:18789` when a manifest model uses the `openai`
+  provider.
+- **Anthropic** is *not* covered yet: it speaks the Anthropic wire protocol,
+  which Headroom's proxy does not currently expose. Add it once Headroom
+  ships an Anthropic-wire endpoint (one named entry, `protocol: anthropic`).
+
+The status chip and `/proxy` report the real per-provider route, so a
+missing route now reads as "direct (proxy bypassed)" rather than silently
+absent.
+
 ## Installation
 
 ```bash
