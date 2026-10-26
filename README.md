@@ -56,6 +56,62 @@ uv tool install headroom
 export HEADROOM_MCP_BIN="$(which headroom)"
 ```
 
+## Keeping telemetry fresh
+
+The signal connector runs through the host's one-shot intake process
+(`lisa intake` or `/intake` in a session), not an in-process timer. When
+the host schedules no intake tick, the cached snapshot ages and every
+report (the `headroom` mode briefing, context items) opens with a
+**stale-snapshot** warning instead of presenting past proxy state as
+live. The framework's contract is that a host-owned scheduler owns the
+tick — for example a systemd user timer:
+
+```ini
+# ~/.config/systemd/user/lisa-intake.timer
+[Unit]
+Description=Refresh Lisa ambient state (headroom telemetry)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target
+```
+
+```ini
+# ~/.config/systemd/user/lisa-intake.service
+[Unit]
+Description=Run one Lisa intake tick
+
+[Service]
+Type=oneshot
+ExecStart=/home/YOUR_USER/.local/bin/lisa intake
+```
+
+Replace `ExecStart` with the absolute path from `command -v lisa`, ensure
+the service has the required environment, then run
+`systemctl --user daemon-reload` and
+`systemctl --user enable --now lisa-intake.timer`.
+The host-managed proxy runs only while a Lisa session is alive; intake
+outside that session may report it down.
+
+## Host visibility
+
+The proxy declaration in `mcp_servers.yaml` includes a `status:` block —
+the pack-declared telemetry surface any host renders generically:
+
+- **`/proxy`** in a session lists proxy startup readiness plus live savings
+  fields (`summary.compression.total_tokens_saved_all_layers`,
+  `summary.cost.total_saved_usd`, `requests.*` from the proxy's `/stats`).
+- The CLI status line shows a `⤳ headroom.headroom` chip on every model
+  call routed through the proxy, or `headroom.headroom ↓ direct` when
+  a compiled proxy is bypassed.
+
+The chip describes configured routing, not proof of each request's receipt.
+Dollar savings are Headroom's estimates, not verified billing reductions;
+cache-hit counters alone do not establish savings caused by compression.
+
 ## Installation
 
 ```bash

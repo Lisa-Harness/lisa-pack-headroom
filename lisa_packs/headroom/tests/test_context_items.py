@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from kernel.models import ContextItem, UnifiedState
 
 from lisa_packs.headroom.context_items import (
@@ -15,6 +17,11 @@ _EXPECTED_TOKENS_SAVED_1H = 120000
 _EXPECTED_SAVINGS_PCT_1H = 30.0
 _EXPECTED_TRAILING_SAVINGS_PCT_7D = 32.0
 _EXPECTED_SALIENT_THRESHOLD = 0.8
+
+
+def _fresh_ts() -> str:
+    """Timestamp a few minutes old — inside the staleness window."""
+    return (datetime.now(UTC)).isoformat()
 
 
 def _signal_item_body() -> ContextItem:
@@ -39,12 +46,14 @@ def _signal_item_body() -> ContextItem:
                 "trailing_savings_pct_7d=32.0",
             ]
         ),
-        collected_at="2026-09-20T12:00:00Z",
+        collected_at=_fresh_ts(),
     )
 
 
 def test_metrics_round_trip_preserves_scalars() -> None:
-    metrics = _metrics_from_signal_item(_signal_item_body())
+    fresh_ts = _fresh_ts()
+    item = _signal_item_body().model_copy(update={"collected_at": fresh_ts})
+    metrics = _metrics_from_signal_item(item)
 
     assert metrics.status == "ok"
     assert metrics.source == "proxy"
@@ -54,7 +63,7 @@ def test_metrics_round_trip_preserves_scalars() -> None:
     assert metrics.tokens_saved_1h == _EXPECTED_TOKENS_SAVED_1H
     assert metrics.savings_pct_1h == _EXPECTED_SAVINGS_PCT_1H
     assert metrics.trailing_savings_pct_7d == _EXPECTED_TRAILING_SAVINGS_PCT_7D
-    assert metrics.collected_at == "2026-09-20T12:00:00Z"
+    assert metrics.collected_at == fresh_ts
 
 
 def test_build_context_items_from_state() -> None:
@@ -82,7 +91,7 @@ def test_build_context_items_critical_has_high_salience() -> None:
         evidence_type="signal_snapshot",
         title="Signal: headroom (error)",
         body="\n".join(["status=error", "source=error", "proxy_up=false"]),
-        collected_at="2026-09-20T12:00:00Z",
+        collected_at=_fresh_ts(),
     )
     state = UnifiedState(compiled_at="2026-09-20T12:00:00Z", context_items=[down])
 
@@ -104,7 +113,7 @@ def test_signal_item_lookup_ignores_foreign_collectors() -> None:
         item_id="state:signal:cloudflare",
         namespace="signals",
         body="status=ok",
-        collected_at="2026-09-20T12:00:00Z",
+        collected_at=_fresh_ts(),
     )
     state = UnifiedState(
         compiled_at="2026-09-20T12:00:00Z",

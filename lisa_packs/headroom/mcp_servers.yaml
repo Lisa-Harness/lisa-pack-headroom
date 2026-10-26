@@ -27,6 +27,16 @@ proxies:
     readiness:
       url_path: /readyz
       timeout_seconds: 10
+    # Pack-declared telemetry surface (rendered by /proxy and the
+    # introspection snapshot): dotted paths into the proxy's /stats JSON.
+    status:
+      url_path: /stats
+      fields:
+        - summary.compression.total_tokens_saved_all_layers
+        - summary.cost.total_saved_usd
+        - summary.cost.savings_pct
+        - requests.total
+        - requests.cached
     warm: true
     required: false
 

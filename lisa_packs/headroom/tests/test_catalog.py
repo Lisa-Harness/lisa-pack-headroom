@@ -62,7 +62,7 @@ def test_mcp_manifest_parses_and_matches_mode_allowlist() -> None:
     from kernel.mcp_launch.server_manifest import load_mcp_server_manifest
 
     root = get_content_root()
-    servers, _memory = load_mcp_server_manifest(root / "mcp_servers.yaml")
+    servers = load_mcp_server_manifest(root / "mcp_servers.yaml")
 
     assert len(servers) == 1
     server = servers[0]
@@ -75,3 +75,24 @@ def test_mcp_manifest_parses_and_matches_mode_allowlist() -> None:
     roots = resolve_mode_roots([get_content_root()])
     mode = json.loads(build_mode_catalog_json(roots))["headroom"]
     assert set(mode["allowed_tool_ids"]) == alias_names
+
+
+def test_proxy_manifest_parses_with_status_block() -> None:
+    """The proxies: block must parse under the kernel proxy loader, and its
+    status: declaration must expose the /stats telemetry surface so hosts
+    can render live savings for this pack."""
+    from kernel.proxy_launch.manifest import load_proxy_server_manifest
+
+    root = get_content_root()
+    specs = load_proxy_server_manifest(root / "mcp_servers.yaml")
+
+    assert len(specs) == 1
+    spec = specs[0]
+    assert spec.proxy_id == "headroom"
+    assert spec.protocol.value == "openai"
+    assert spec.providers == ("ollama",)
+    status = spec.status_spec
+    assert status is not None, "headroom declares a status: block for /proxy visibility"
+    assert status.url_path == "/stats"
+    assert "summary.compression.total_tokens_saved_all_layers" in status.fields
+    assert "summary.cost.total_saved_usd" in status.fields

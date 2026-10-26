@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from lisa_packs.headroom.assessment import assess
 from lisa_packs.headroom.models import HeadroomMetrics
 
 _EXPECTED_CRITICAL_SALIENCE = 0.8
 
 
+def _fresh_ts() -> str:
+    """Timestamp a few minutes old — inside the staleness window."""
+    collected = datetime.now(UTC) - timedelta(minutes=5)
+    return collected.isoformat()
+
+
 def _ok_metrics() -> HeadroomMetrics:
     return HeadroomMetrics(
-        collected_at="2026-09-20T12:00:00Z",
+        collected_at=_fresh_ts(),
         source="proxy",
         proxy_up=True,
         proxy_url="http://127.0.0.1:8787",
@@ -30,7 +38,7 @@ def _ok_metrics() -> HeadroomMetrics:
 
 def _proxy_down_metrics() -> HeadroomMetrics:
     return HeadroomMetrics(
-        collected_at="2026-09-20T12:00:00Z",
+        collected_at=_fresh_ts(),
         source="error",
         proxy_up=False,
         proxy_url="http://127.0.0.1:8787",
@@ -40,7 +48,7 @@ def _proxy_down_metrics() -> HeadroomMetrics:
 
 def _unconfigured_metrics() -> HeadroomMetrics:
     return HeadroomMetrics(
-        collected_at="2026-09-20T12:00:00Z",
+        collected_at=_fresh_ts(),
         source="unconfigured",
         status="unconfigured",
     )
@@ -192,7 +200,7 @@ def test_assess_error_snapshot_has_no_collection_error_finding() -> None:
     """A status=error snapshot with no feed IS the proxy-down case (critical),
     not a separate collection-error warn."""
     metrics = HeadroomMetrics(
-        collected_at="2026-09-20T12:00:00Z",
+        collected_at=_fresh_ts(),
         source="error",
         proxy_up=False,
         status="error",
@@ -201,3 +209,39 @@ def test_assess_error_snapshot_has_no_collection_error_finding() -> None:
 
     assert not [f for f in assessment.findings if f.id == "collection-error"]
     assert [f for f in assessment.findings if f.id == "proxy-down"]
+
+
+def test_assess_stale_snapshot_is_flagged() -> None:
+    """A cached snapshot older than the staleness window reads as stale.
+
+    The intake tick that refreshes it has not run (the 2026-10 snapshot-age
+    incident: a month-old 'proxy up' briefing presented as live state), so
+    the assessment must say so instead of describing a past proxy.
+    """
+    stale_ts = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
+    metrics = _ok_metrics().model_copy(update={"collected_at": stale_ts})
+
+    assessment = assess(metrics)
+
+    stale = [f for f in assessment.findings if f.id == "stale-snapshot"]
+    assert stale, "expected a stale-snapshot finding"
+    assert stale[0].severity == "warn"
+    assert stale[0].salience > 0.0
+    assert "/intake" in stale[0].body
+    assert assessment.status == "degraded"
+
+
+def test_assess_fresh_snapshot_has_no_stale_finding() -> None:
+    """A snapshot inside the staleness window carries no stale finding."""
+    assessment = assess(_ok_metrics())
+
+    assert not [f for f in assessment.findings if f.id == "stale-snapshot"]
+
+
+def test_assess_undatable_timestamp_is_not_fatal() -> None:
+    """An unparsable collected_at yields no stale finding, no crash."""
+    metrics = _ok_metrics().model_copy(update={"collected_at": "not-a-timestamp"})
+
+    assessment = assess(metrics)
+
+    assert not [f for f in assessment.findings if f.id == "stale-snapshot"]

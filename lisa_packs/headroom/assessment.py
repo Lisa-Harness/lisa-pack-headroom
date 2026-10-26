@@ -1,8 +1,8 @@
-"""Pure assessment projector for Headroom telemetry.
+"""Assessment projector for Headroom telemetry.
 
-Deterministic projection from a cached :class:`HeadroomMetrics` snapshot
-into a :class:`HeadroomAssessment`. No API calls, no I/O — fully unit
-testable. Mirrors the cloudflare pack's projector contract.
+Projects a cached :class:`HeadroomMetrics` snapshot into a
+:class:`HeadroomAssessment`, checking its age against the current time.
+No API calls or I/O. Mirrors the cloudflare pack's projector contract.
 
 Finding severities (thresholds live in config:
 ``headroom_savings_floor_pct``, ``headroom_regression_ratio``):
@@ -25,11 +25,29 @@ Finding severities (thresholds live in config:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from lisa_packs.headroom.models import Finding, HeadroomAssessment, HeadroomMetrics
 
 _SAVING = "token_savings"
 _COMPRESSION = "compression"
 _HEALTH = "headroom_health"
+
+_STALE_AFTER_HOURS = 6
+"""A cached snapshot older than this reads as stale: the host's intake
+tick (``lisa intake`` — a host-owned scheduler's one-shot) has not run,
+so findings describe a past proxy state, not the live one."""
+
+
+def _snapshot_age_hours(metrics: HeadroomMetrics) -> float | None:
+    """Age of the cached snapshot in hours, or ``None`` when undatable."""
+    try:
+        collected_at = datetime.fromisoformat(metrics.collected_at)
+    except (TypeError, ValueError):
+        return None
+    if collected_at.tzinfo is None:
+        collected_at = collected_at.replace(tzinfo=UTC)
+    return (datetime.now(UTC) - collected_at).total_seconds() / 3600.0
 
 
 def assess(
@@ -37,6 +55,7 @@ def assess(
     *,
     savings_floor_pct: float = 5.0,
     regression_ratio: float = 0.6,
+    stale_after_hours: float = _STALE_AFTER_HOURS,
 ) -> HeadroomAssessment:
     """Project a cached Headroom snapshot into findings and hypotheses.
 
@@ -46,6 +65,8 @@ def assess(
             traffic is flagged as a possible routing misconfiguration.
         regression_ratio: Fraction of the trailing 7d savings average below
             which the current window reads as a regression.
+        stale_after_hours: Age after which the cached snapshot itself is
+            flagged (the intake tick that refreshes it has not run).
 
     Returns:
         :class:`HeadroomAssessment` with severity-tagged findings.
@@ -55,11 +76,32 @@ def assess(
     hypotheses: list[str] = []
     anchors: list[str] = []
 
+    # -- snapshot staleness (checked before every other finding) --------
+    age_hours = _snapshot_age_hours(metrics)
+    if age_hours is not None and age_hours > stale_after_hours:
+        findings.append(
+            Finding(
+                id="stale-snapshot",
+                severity="warn",
+                title="Telemetry snapshot is stale",
+                body=(
+                    f"This report was cached {age_hours:.0f}h ago and has not "
+                    "refreshed: the host's intake tick has not run. Run "
+                    "`/intake` (or schedule `lisa intake`) and re-enter "
+                    "headroom mode for live proxy state."
+                ),
+                evidence_type=_HEALTH,
+                tags=["headroom", "intake", "stale"],
+                salience=0.6,
+            )
+        )
+
     # -- proxy reachability ---------------------------------------------
     if metrics.status == "unconfigured":
         return HeadroomAssessment(
             status="unconfigured",
             findings=[
+                *findings,
                 Finding(
                     id="unconfigured",
                     severity="info",
@@ -72,7 +114,7 @@ def assess(
                     evidence_type=_HEALTH,
                     tags=["headroom", "unconfigured"],
                     salience=0.0,
-                )
+                ),
             ],
         )
 
